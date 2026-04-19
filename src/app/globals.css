@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/* ── Brand palette ───────────────────────────────────────────── */
+:root {
+  --bg: #18002d;
+  --pink: #ff00c7;
+  --purple-mid: #650d94;
+  --coral: #ff7f62;
+  --cyan: #00eeff;
+  --lime: #91ff00;
+  --chartreuse: #c7ff00;
+  --orange: #fb2e00;
+
+  --text: #f0e6ff;
+  --text-muted: #a78bc0;
+}
+
+/* ── Tailwind v4 theme mapping ───────────────────────────────── */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-pink: var(--pink);
+  --color-purple-mid: var(--purple-mid);
+  --color-coral: var(--coral);
+  --color-cyan: var(--cyan);
+  --color-lime: var(--lime);
+  --color-chartreuse: var(--chartreuse);
+  --color-orange: var(--orange);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ── Base reset ──────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    line-height: 1.6;
+    min-height: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: var(--pink);
+    color: var(--bg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+
+  img,
+  video {
+    max-width: 100%;
+    display: block;
+  }
+}
