@@ -21,6 +21,10 @@ import ChromeText from "./ChromeText";
  *   via responsive H * SCALE * SIZE_FACTOR scale on the mesh.
  * - `pointer-events: auto` so cursor coords aren't intercepted by the
  *   absolutely-positioned overlay above.
+ * - No `touch-action: none` here — touches outside the chrome text
+ *   region must still scroll the page. The hit-test that decides
+ *   whether to consume a gesture lives in `ChromeText.tsx` and runs
+ *   on touchstart against the responsive bounds of the chrome plane.
  */
 export default function ChromeTextCanvas() {
   const dpr =

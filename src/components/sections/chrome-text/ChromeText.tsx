@@ -72,8 +72,8 @@ varying vec2 vUv;
 
 const float springConstant = 11.0;
 const float damping = 8.0;
-const float maxVelocity = 1.7;
-const float pushStrength = 30.0;
+const float maxVelocity = 2.1;
+const float pushStrength = 37.5;
 
 void main() {
   vec4 particleData = texture2D(uParticleState, vUv);
@@ -247,6 +247,11 @@ const OFFSCREEN_WIDTH = 1340 * 2;
 const OFFSCREEN_HEIGHT = 584 * 2;
 const TEXT_ASPECT = OFFSCREEN_HEIGHT / OFFSCREEN_WIDTH;
 const SCALE = 2.58;
+// Shrinks the WordPress-port-tuned `H * SCALE` by 30% to suit our
+// full-viewport hero layout. Hoisted to file scope so the touch
+// hit-test (which needs to know where the chrome plane lives in NDC)
+// can read the same constant the mesh scale uses.
+const SIZE_FACTOR = 0.7;
 const GRID_WIDTH = 256;
 const GRID_HEIGHT = 128;
 const PARTICLE_COUNT = GRID_WIDTH * GRID_HEIGHT;
@@ -563,6 +568,18 @@ export default function ChromeText() {
   const lastMoveTime = useRef(0);
   const hasReceivedMove = useRef(false);
 
+  // NDC bounds of the chrome plane on the canvas. Touch hit-test uses
+  // these to decide whether a gesture should drive the particles
+  // (preventDefault, page won't scroll) or be passed through to the
+  // browser as a normal scroll. Updated whenever the responsive sizing
+  // recomputes; see the useEffect just above the touch handler.
+  const textBoundsRef = useRef({ halfW: 1, halfH: 1, centerY: 0 });
+  // Whether the current touch gesture started over the text. Set on
+  // touchstart, read by touchmove. Avoids re-running the hit-test on
+  // every move event and prevents a swipe that started on text from
+  // suddenly releasing into a scroll mid-gesture.
+  const interceptingTouch = useRef(false);
+
   useEffect(() => {
     lastMoveTime.current = performance.now();
     const onMove = (cx: number, cy: number) => {
@@ -605,15 +622,57 @@ export default function ChromeText() {
     };
 
     const mouseHandler = (e: MouseEvent) => onMove(e.clientX, e.clientY);
-    const touchHandler = (e: TouchEvent) => {
-      if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
+
+    // Touch handling — only intercept gestures that begin over the
+    // text region so the rest of the canvas (empty hero space above /
+    // below the text) still scrolls the page normally. Decision is
+    // made once on touchstart and locked for the gesture so a swipe
+    // that started inside the text can't suddenly release into a
+    // scroll mid-stroke.
+    const canvas = gl.domElement;
+
+    const isOverText = (cx: number, cy: number) => {
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((cy - rect.top) / rect.height) * 2 - 1);
+      const { halfW, halfH, centerY } = textBoundsRef.current;
+      return Math.abs(nx) <= halfW && Math.abs(ny - centerY) <= halfH;
+    };
+
+    const touchstartHandler = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      interceptingTouch.current = isOverText(t.clientX, t.clientY);
+      if (interceptingTouch.current) {
+        // Seed the pointer so the first move's velocity is meaningful
+        // rather than a jump from the previous touch's last position.
+        onMove(t.clientX, t.clientY);
+      }
+    };
+
+    const touchmoveHandler = (e: TouchEvent) => {
+      if (!interceptingTouch.current) return;
+      const t = e.touches[0];
+      if (!t) return;
+      e.preventDefault();
+      onMove(t.clientX, t.clientY);
+    };
+
+    const touchendHandler = () => {
+      interceptingTouch.current = false;
     };
 
     window.addEventListener("mousemove", mouseHandler);
-    window.addEventListener("touchmove", touchHandler, { passive: true });
+    canvas.addEventListener("touchstart", touchstartHandler, { passive: true });
+    canvas.addEventListener("touchmove", touchmoveHandler, { passive: false });
+    canvas.addEventListener("touchend", touchendHandler, { passive: true });
+    canvas.addEventListener("touchcancel", touchendHandler, { passive: true });
     return () => {
       window.removeEventListener("mousemove", mouseHandler);
-      window.removeEventListener("touchmove", touchHandler);
+      canvas.removeEventListener("touchstart", touchstartHandler);
+      canvas.removeEventListener("touchmove", touchmoveHandler);
+      canvas.removeEventListener("touchend", touchendHandler);
+      canvas.removeEventListener("touchcancel", touchendHandler);
     };
   }, [gl]);
 
@@ -627,6 +686,19 @@ export default function ChromeText() {
     () => computeResponsive(size.width, size.height),
     [size.width, size.height]
   );
+
+  // Keep the touch hit-test bounds in sync with the responsive sizing.
+  // Mirrors the mesh scale calculation below (H * SCALE * SIZE_FACTOR
+  // for X, same * canvasAspect * TEXT_ASPECT for Y) — if you change
+  // either the mesh scale or SIZE_FACTOR, update this too. A small
+  // padding factor on each axis (1.05) makes the touch zone feel
+  // slightly more generous than the visible plane.
+  useEffect(() => {
+    const canvasAspect = size.width / size.height;
+    const halfW = H * SCALE * SIZE_FACTOR * 1.05;
+    const halfH = H * SCALE * canvasAspect * SIZE_FACTOR * TEXT_ASPECT * 1.05;
+    textBoundsRef.current = { halfW, halfH, centerY: yOffset };
+  }, [H, yOffset, size.width, size.height]);
 
   // Ping-pong refs.
   const inputRT = useRef(simRT1);
@@ -707,11 +779,8 @@ export default function ChromeText() {
 
   // Chrome plane lives in the main R3F scene. Vertex shader uses
   // modelMatrix only, so position/scale go straight to clip space.
-  // SIZE_FACTOR shrinks the WordPress-port-tuned `H * SCALE` by 30%
-  // because (a) our R3F canvas fills the full Hero viewport (the WP
-  // canvas had surrounding chrome) and (b) the user wanted a more
-  // restrained text size relative to the foliage backdrop.
-  const SIZE_FACTOR = 0.7;
+  // SIZE_FACTOR is at file scope (see top of file) — keep it shared
+  // with the touch hit-test so they can't drift apart.
   const canvasAspect = size.width / size.height;
   const planeHeight = 2 * TEXT_ASPECT;
 
