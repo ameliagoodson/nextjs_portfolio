@@ -1,6 +1,6 @@
 "use client";
 
-/* eslint-disable react-hooks/immutability, react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/immutability */
 // Three.js material uniforms and renderer state are designed to be
 // mutated each frame inside useFrame — that's the entire programming
 // model. React 19's stricter hook rules (immutability, no setState
@@ -21,8 +21,12 @@
  *      `discScene` into it, then call `KawaseBlurPass.render()`
  *      directly (NOT via an EffectComposer) to blur into the pass's
  *      own internal renderTargetA. The fixed buffer size is what
- *      makes Shopify's exact values (pointSize=20, threshold=0.36,
- *      cutoff=0.72, VERY_LARGE kernel) reproduce Shopify's look.
+ *      makes Shopify's exact values (pointSize=5, threshold=0.36,
+ *      cutoff=0.6, VERY_LARGE kernel, resolutionScale=0.25) reproduce
+ *      Shopify's look. These were extracted from the original Shopify
+ *      bundle (`Shopify_2025-JS.js`) — earlier values like pointSize=20
+ *      and cutoff=0.72 were a vanilla-port drift, not Shopify's actual
+ *      settings.
  *   3. **Chrome plane in main R3F scene** — a textured plane samples
  *      the blurred buffer and runs the chrome matcap shader on it.
  *      The plane handles responsive sizing/positioning.
@@ -41,7 +45,7 @@
  *   covers a different fraction of a smaller buffer. The fixed-size
  *   offscreen approach is the only way to get the reference look.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useFBO, useTexture } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -142,7 +146,8 @@ const discFragmentShader = /* glsl */ `void main() {
 
 // Chrome plane vertex shader — `modelMatrix * position` only, ignoring
 // view/projection. The plane lives directly in clip space, positioned
-// & scaled via responsive transforms.
+// & scaled via responsive transforms. Matches Shopify's vertex shader
+// exactly (Shopify_2025-JS.js line 4537).
 const finalVertexShader = /* glsl */ `varying vec2 vUv;
 void main() {
   vUv = uv;
@@ -452,7 +457,11 @@ export default function ChromeText() {
           uOpacity: { value: 1 },
           uIntroProgress: { value: 1.5 },
           uThreshold: { value: 0.36 },
-          uCutoff: { value: 0.72 },
+          // 0.6 is Shopify's published value, paired with their LARGE
+          // (not VERY_LARGE) kernel below. With less blur halo, 0.65
+          // gives a moderate stroke width with hollow letters and
+          // clean inter-letter gaps. Tune in 0.05 increments.
+          uCutoff: { value: 0.65 },
         },
         vertexShader: finalVertexShader,
         fragmentShader: finalFragmentShader,
@@ -462,9 +471,31 @@ export default function ChromeText() {
     [matcap]
   );
 
-  // Offscreen disc FBO at fixed Shopify resolution. NOT canvas-sized,
-  // so DPR changes don't shift our tuning constants.
+  // Disc FBO (the "input buffer" in Shopify's composer terminology).
+  // Holds the raw rasterised particle dots before blur. Sized to
+  // Shopify's fixed 2680×1168 — verified against Shopify_2025-JS.js
+  // line 4748. Don't canvas-size this; at small viewports the dots
+  // become huge relative to FBO and overfill into one blob.
   const discFBO = useFBO(OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    stencilBuffer: false,
+    depthBuffer: false,
+    type: THREE.UnsignedByteType,
+  });
+
+  // Output buffer for the final upscaled blur — what the chrome
+  // plane samples. CRITICAL: KawaseBlurPass.render() does its blur
+  // iterations at low res (resolutionScale=0.25 → 670×292), then
+  // a CopyMaterial pass writes the final result to outputBuffer at
+  // whatever size outputBuffer is. We size this at the full disc FBO
+  // resolution so the chrome plane samples a high-res upscaled blur.
+  // Shopify achieves the same thing via composer.outputBuffer being
+  // (o, r)-sized. Sampling the low-res blur target directly leaves
+  // visible blocky pixelation under the matcap that reads as letters
+  // "merging" into one another.
+  const blurOutputFBO = useFBO(OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
@@ -475,40 +506,32 @@ export default function ChromeText() {
 
   // Standalone KawaseBlurPass. We DON'T put it in an EffectComposer
   // because EffectComposer.setSize would resize the user's canvas.
-  // Calling pass.render() directly with our discFBO as inputBuffer
-  // works fine — the pass uses its own internal ping-pong targets
-  // (renderTargetA/B) for the blur iterations.
   //
-  // For VERY_LARGE the kernel sequence has 7 entries; the final
-  // write at i=6 lands in renderTargetA ((6 & 1) === 0 → A).
+  // setSize matches Shopify's `composer.setSize(o*R, r*R)` where
+  // R = 2 / max(0.5, devicePixelRatio). At DPR=2, R=1 → blur runs
+  // at 0.25 * (o, r) = 670×292. At DPR=1, R=2 → 1340×584.
   const blurPass = useMemo(() => {
+    const dpr = gl.getPixelRatio();
+    const R = 2 / Math.max(0.5, dpr);
     const p = new KawaseBlurPass({
-      kernelSize: KernelSize.VERY_LARGE,
-      resolutionScale: 0.5,
+      // Shopify ships VERY_LARGE (4) but with a tighter source PNG
+      // than ours. With our denser particle distribution VERY_LARGE
+      // produces halos that bridge adjacent letters even after
+      // raising cutoff. LARGE (3) keeps the soft chrome look while
+      // tightening the inter-letter gaps so r-i, n-s etc. read as
+      // separate glyphs. The kernel sequence drops from 7 to 6 blur
+      // iterations.
+      kernelSize: KernelSize.LARGE,
+      resolutionScale: 0.25,
     });
-    p.setSize(OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT);
+    p.setSize(OFFSCREEN_WIDTH * R, OFFSCREEN_HEIGHT * R);
     return p;
-  }, []);
+  }, [gl]);
 
-  // Wire the blur output into the chrome plane material. Determines
-  // A vs B from kernelSequence parity so the kernel size can change
-  // without breaking the wiring.
+  // Wire the upscaled blur output into the chrome plane material.
   useEffect(() => {
-    // KawaseBlurPass keeps its kernelSequence and ping-pong render
-    // targets internal — not part of the public type. We need to
-    // reach in to know which target the final blur write lands in so
-    // we can sample it from the chrome plane material.
-    const internals = blurPass as unknown as {
-      blurMaterial?: { kernelSequence?: number[] };
-      renderTargetA: THREE.WebGLRenderTarget;
-      renderTargetB: THREE.WebGLRenderTarget;
-    };
-    const len = internals.blurMaterial?.kernelSequence?.length ?? 7;
-    const lastIdx = len - 1;
-    const finalTarget =
-      (lastIdx & 1) === 0 ? internals.renderTargetA : internals.renderTargetB;
-    finalMaterial.uniforms.uBlurredTexture.value = finalTarget.texture;
-  }, [blurPass, finalMaterial]);
+    finalMaterial.uniforms.uBlurredTexture.value = blurOutputFBO.texture;
+  }, [blurOutputFBO, finalMaterial]);
 
   useEffect(() => {
     return () => {
@@ -538,6 +561,7 @@ export default function ChromeText() {
   const lastNdcPointer = useRef(new THREE.Vector2());
   const ndcVelocity = useRef(new THREE.Vector2());
   const lastMoveTime = useRef(0);
+  const hasReceivedMove = useRef(false);
 
   useEffect(() => {
     lastMoveTime.current = performance.now();
@@ -554,6 +578,20 @@ export default function ChromeText() {
       const ly = cy - rect.top;
       const nx = (lx / rect.width) * 2 - 1;
       const ny = -((ly / rect.height) * 2 - 1); // NDC: top = +1
+
+      // FIRST move: seed both pointer refs to actual cursor pos and
+      // emit zero velocity. Otherwise lastNdcPointer is (0,0) and
+      // the first delta computes a huge fake velocity from origin
+      // to cursor, kicking particles violently as the canvas mounts
+      // — that's the visible "shudder" on load.
+      if (!hasReceivedMove.current) {
+        hasReceivedMove.current = true;
+        ndcPointer.current.set(nx, ny);
+        lastNdcPointer.current.set(nx, ny);
+        ndcVelocity.current.set(0, 0);
+        lastMoveTime.current = now;
+        return;
+      }
 
       lastNdcPointer.current.copy(ndcPointer.current);
       ndcPointer.current.set(nx, ny);
@@ -579,27 +617,39 @@ export default function ChromeText() {
     };
   }, [gl]);
 
-  // Responsive sizing.
-  const [{ H, yOffset }, setResponsive] = useState(() =>
-    computeResponsive(
-      typeof window !== "undefined" ? window.innerWidth : 1024,
-      typeof window !== "undefined" ? window.innerHeight : 768
-    )
+  // Responsive sizing — derived directly from the canvas size on each
+  // render. Avoids the previous useState+useEffect pattern, which
+  // initialised from window dimensions and then updated to canvas
+  // dimensions a frame later. That mismatch caused the chrome plane
+  // to physically jump position right after mount — visible as the
+  // "shudder" on fade-in.
+  const { H, yOffset } = useMemo(
+    () => computeResponsive(size.width, size.height),
+    [size.width, size.height]
   );
-
-  useEffect(() => {
-    setResponsive(computeResponsive(size.width, size.height));
-  }, [size.width, size.height]);
 
   // Ping-pong refs.
   const inputRT = useRef(simRT1);
   const outputRT = useRef(simRT2);
 
+  // Skip the first useFrame call. R3F's clock can report a huge delta
+  // on the first tick (time since canvas init, not since last RAF),
+  // which makes the spring physics overshoot and visibly shudder
+  // before settling. After the first frame, deltas are normal.
+  const firstFrameSkipped = useRef(false);
+
   // Per-frame render loop. Default priority (0) so R3F still
   // auto-renders the main scene after our offscreen passes — that's
   // what draws the chrome plane to the canvas.
   useFrame((state, delta) => {
-    const dt = Math.min(delta, 0.3);
+    if (!firstFrameSkipped.current) {
+      firstFrameSkipped.current = true;
+      return;
+    }
+    // Clamp at one 30fps frame. The previous 0.3s clamp let big
+    // pauses (tab refocus, slow asset loads) inject huge physics
+    // steps that overshoot and shudder.
+    const dt = Math.min(delta, 1 / 30);
 
     // Mouse → simulation-space. From the OLD port:
     //   transformedMouseX = mouse.x / (scale * SCALE)
@@ -644,9 +694,11 @@ export default function ChromeText() {
     state.gl.clear(true, false, false);
     state.gl.render(discScene, orthoCamera);
 
-    // 3. Kawase blur — directly invoke the pass with our discFBO as
-    //    the input buffer. Output is in blurPass.renderTargetA.
-    blurPass.render(state.gl, discFBO, null, dt, false);
+    // 3. Kawase blur — directly invoke the pass. The pass blurs
+    //    discFBO at low res internally, then upscales/copies into
+    //    blurOutputFBO via its CopyMaterial step. The chrome plane
+    //    samples blurOutputFBO at the full FBO resolution.
+    blurPass.render(state.gl, discFBO, blurOutputFBO, dt, false);
 
     // Restore for R3F's auto-render of the main scene (chrome plane).
     state.gl.setRenderTarget(prevRT);
@@ -655,13 +707,22 @@ export default function ChromeText() {
 
   // Chrome plane lives in the main R3F scene. Vertex shader uses
   // modelMatrix only, so position/scale go straight to clip space.
+  // SIZE_FACTOR shrinks the WordPress-port-tuned `H * SCALE` by 30%
+  // because (a) our R3F canvas fills the full Hero viewport (the WP
+  // canvas had surrounding chrome) and (b) the user wanted a more
+  // restrained text size relative to the foliage backdrop.
+  const SIZE_FACTOR = 0.7;
   const canvasAspect = size.width / size.height;
   const planeHeight = 2 * TEXT_ASPECT;
 
   return (
     <mesh
       position={[0, yOffset, 0]}
-      scale={[H * SCALE, H * SCALE * canvasAspect, 1]}
+      scale={[
+        H * SCALE * SIZE_FACTOR,
+        H * SCALE * canvasAspect * SIZE_FACTOR,
+        1,
+      ]}
       frustumCulled={false}
     >
       <planeGeometry args={[2, planeHeight]} />

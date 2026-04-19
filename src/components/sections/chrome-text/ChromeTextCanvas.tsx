@@ -10,21 +10,27 @@ import ChromeText from "./ChromeText";
  * Hosts the R3F canvas that the chrome text effect renders into.
  *
  * Notes:
- * - `dpr={[1, 2]}` caps pixel ratio at 2 — the original WordPress port did
- *   the same. Higher DPR has minimal visual benefit here and is expensive
- *   given the GPGPU passes run every frame.
+ * - `dpr={Math.min(window.devicePixelRatio, 2)}` caps pixel ratio at 2.
+ *   We pass a fixed value (not a range) because R3F's range-based DPR
+ *   can settle at the wrong value on initial paint, then switch — that
+ *   triggers a canvas resize one frame in, visible as a "shudder".
  * - `gl.alpha = true` so the video underneath shows through.
- * - No camera config: the chrome effect ignores the camera (final shader
- *   sets gl_Position from modelMatrix only).
+ * - No camera config: the chrome plane uses clip-space rendering
+ *   (vertex shader sets `gl_Position = modelMatrix * position`), so the
+ *   camera is irrelevant. Mesh sizing is handled in `ChromeText.tsx`
+ *   via responsive H * SCALE * SIZE_FACTOR scale on the mesh.
  * - `pointer-events: auto` so cursor coords aren't intercepted by the
  *   absolutely-positioned overlay above.
  */
 export default function ChromeTextCanvas() {
+  const dpr =
+    typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 2) : 1;
+
   return (
     <Canvas
       className="absolute inset-0 z-10 h-full w-full"
       style={{ pointerEvents: "auto" }}
-      dpr={[1, 2]}
+      dpr={dpr}
       gl={{ alpha: true, antialias: true, stencil: false, depth: false }}
     >
       <Suspense fallback={null}>
