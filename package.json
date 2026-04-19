@@ -27,15 +27,16 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
+    "@react-three/postprocessing": "^3.0.4",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "gsap": "^3.15.0",
     "next": "16.2.4",
+    "postprocessing": "^6.39.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.5.0",
     "three": "^0.184.0",
-    "three-kawase-blur": "github:ycw/three-kawase-blur",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
