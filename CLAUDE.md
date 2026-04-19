@@ -4,24 +4,11 @@
 
 Amelia Goodson's personal portfolio site. Migrating from a WordPress/Local by Flywheel setup to Next.js. The goal is a visually impressive, animation-rich portfolio that signals "serious React/Next.js developer" to hiring managers for mid-level roles.
 
-**Quality bar:** The Shopify Editions sites (editions.shopify.com) are the benchmark for craft and visual ambition. That level of polish — layered 3D scenes, scroll-responsive animations, cinematic transitions — is what we're aiming for. Not a carbon copy, but the same tier of quality and uniqueness. Never settle for a standard template feel.
+**Quality bar:** The Shopify Editions sites (https://www.shopify.com/editions/winter2026 and https://www.shopify.com/editions/summer2025) are the benchmark for craft and visual ambition. That level of polish — layered 3D scenes, scroll-responsive animations, cinematic transitions — is what we're aiming for. Not a carbon copy, but the same tier of quality and uniqueness. Never settle for a standard template feel.
 
-## Agent Skills
+**Always use Context7 MCP (`resolve-library-id` → `query-docs`) before implementing anything involving a third-party library.** Training data may be stale — Tailwind v4, Next.js 16, GSAP 3, R3F, Framer Motion all have recent API changes.
 
-Two Vercel skills are installed in `.agents/skills/` and are automatically loaded into context. Follow their rules when writing or reviewing code.
-
-| Skill                         | Source                           | Covers                                                                                                                                        |
-| ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `next-best-practices`         | vercel-labs/next-skills          | File conventions, RSC boundaries, async APIs (Next.js 16+), metadata, image/font optimisation, route handlers, hydration errors, bundling     |
-| `vercel-react-best-practices` | vercel-labs/agent-skills         | 70 performance rules: waterfalls, bundle size, server-side perf, client data fetching, re-renders, rendering perf, JS perf, advanced patterns |
-| `web-design-guidelines`       | vercel-labs/agent-skills         | Web design best practices and UI/UX guidelines                                                                                                |
-| `gsap-utils`                  | greensock/gsap-skills (official) | GSAP animation patterns, ScrollTrigger, timeline best practices                                                                               |
-| `react-three-fiber`           | vercel-labs/json-render          | R3F + Three.js component patterns, scene setup, canvas integration                                                                            |
-| `framer-motion-animator`      | patricio0312rev/skills           | Framer Motion page transitions, variants, gesture animations                                                                                  |
-| `tailwind-v4-shadcn`          | secondsky/claude-skills          | Tailwind v4 CSS-first config (no tailwind.config.js), setup conventions                                                                       |
-| `find-skills`                 | vercel-labs/skills               | Discover and install new skills from the ecosystem                                                                                            |
-
-**Always use Context7 MCP (`resolve-library-id` → `query-docs`) before implementing anything involving a third-party library.** Training data may be stale — Tailwind v4, Next.js 15, GSAP 3, R3F, Framer Motion all have recent API changes.
+Skills are auto-loaded from `.agents/skills/` — check that folder to see what's available.
 
 ## Stack Decisions
 
@@ -33,7 +20,7 @@ Two Vercel skills are installed in `.agents/skills/` and are automatically loade
 | Database        | None                           | All content is static config                                                 |
 | Styling         | Tailwind v4                    | CSS-first config (`@theme inline` in `globals.css`, no `tailwind.config.js`) |
 | State           | Zustand                        | Lightweight, no boilerplate, sufficient for portfolio scope                  |
-| Unit tests      | Vitest + React Testing Library | `npm test` — config in `vitest.config.ts`, setup in `src/test/setup.ts`      |
+| Unit tests      | Vitest + React Testing Library | `npm test` — config in `vitest.config.ts`, setup in `vitest.setup.ts`        |
 | E2e tests       | Playwright (Chromium)          | `npm run test:e2e` — tests in `e2e/`, config in `playwright.config.ts`       |
 | Package manager | npm                            |                                                                              |
 
@@ -177,6 +164,33 @@ Both are fine. Neither hijacks scrolling.
 - Previous: WordPress/CMS work June 2022–June 2025, then React pivot
 - Portfolio must signal genuine engineering skill, not CMS work
 - WordPress not mentioned on LinkedIn or resume
+
+## Commit Conventions
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) format: `type: short summary`.
+
+Common types for this project: `feat`, `fix`, `style`, `refactor`, `test`, `chore`.
+
+**Rules:**
+
+- Max 5 bullet points in the body — focus on WHY, not what
+- Atomic commits — one logical change per commit
+- During a session, ask Claude to suggest commit points rather than committing everything at the end
+- At the start of a new session, tell Claude what you're building so natural commit points can be flagged
+
+**Examples:**
+
+```
+feat: add hero video background with overlay
+
+- Video autoplay muted loop for atmospheric background
+- Overlay tint uses bg/40 so text stays readable over dark footage
+
+chore: set up Vitest with co-located test files
+
+- Co-location keeps tests discoverable alongside the component they cover
+- vitest.setup.ts at root keeps config flat and avoids a one-file test/ folder
+```
 
 ## What We Are NOT Doing
 
