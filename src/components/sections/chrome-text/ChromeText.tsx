@@ -120,7 +120,7 @@ void main() {
 const discVertexShader = /* glsl */ `uniform sampler2D uPositions;
 uniform sampler2D uInitialState;
 
-const float pointSize = 20.0;
+const float pointSize = 5.0;
 
 void main() {
   vec3 pos = texture2D(uPositions, position.xy).xyz;
@@ -234,7 +234,7 @@ void main() {
 
 // ------------------------------------------------------------------ helpers
 
-const POSITIONS_URL = "/textures/hero-text-11-southwave.png";
+const POSITIONS_URL = "/textures/horizons.png";
 const MATCAP_URL = "/textures/matcap_512.png";
 
 // Shopify constants — do NOT change without reading CLAUDE.md tuning notes.
