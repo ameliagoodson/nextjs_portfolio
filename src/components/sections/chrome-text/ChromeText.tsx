@@ -124,7 +124,11 @@ void main() {
 const discVertexShader = /* glsl */ `uniform sampler2D uPositions;
 uniform sampler2D uInitialState;
 
-const float pointSize = 5.0;
+// 5.0 is Shopify's value, tuned for the chunkier horizons.png. Bumped
+// to 16.0 for the much thinner Amelia script — bigger raster dots →
+// denser pre-blur source → fatter post-blur strokes. If letters start
+// bridging, raise uCutoff (0.5 → 0.55) instead of dropping pointSize.
+const float pointSize = 16.0;
 
 void main() {
   vec3 pos = texture2D(uPositions, position.xy).xyz;
@@ -239,7 +243,7 @@ void main() {
 
 // ------------------------------------------------------------------ helpers
 
-const POSITIONS_URL = "/textures/horizons.png";
+const POSITIONS_URL = "/textures/hero-text-11-southwave.png";
 const MATCAP_URL = "/textures/matcap_512.png";
 
 // Shopify constants — do NOT change without reading CLAUDE.md tuning notes.
@@ -462,11 +466,13 @@ export default function ChromeText() {
           uOpacity: { value: 1 },
           uIntroProgress: { value: 1.5 },
           uThreshold: { value: 0.36 },
-          // 0.6 is Shopify's published value, paired with their LARGE
-          // (not VERY_LARGE) kernel below. With less blur halo, 0.65
-          // gives a moderate stroke width with hollow letters and
-          // clean inter-letter gaps. Tune in 0.05 increments.
-          uCutoff: { value: 0.65 },
+          // Lower cutoff = more of the blur halo passes the discard
+          // test = thicker visible stroke. 0.65 was tuned for the
+          // chunkier `horizons.png` source; the `Amelia` script PNG
+          // has thinner letterforms so 0.5 brings the apparent
+          // weight back up. If still too thin, the next lever is
+          // `pointSize` in the disc vertex shader (line 127).
+          uCutoff: { value: 0.5 },
         },
         vertexShader: finalVertexShader,
         fragmentShader: finalFragmentShader,
