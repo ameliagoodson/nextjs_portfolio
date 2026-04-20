@@ -738,8 +738,9 @@ export default function ChromeText() {
     const aspectInv = state.size.height / state.size.width;
     const mx = ndcPointer.current.x;
     const my = ndcPointer.current.y;
-    const mouseX = mx / (H * SCALE);
-    const mouseY = (((my - yOffset) / H) * aspectInv) / (SCALE * TEXT_ASPECT);
+    const mouseX = mx / (H * SCALE * SIZE_FACTOR);
+    const mouseY =
+      (((my - yOffset) / H) * aspectInv) / (SCALE * TEXT_ASPECT * SIZE_FACTOR);
 
     simulationMaterial.uniforms.uMouse.value.set(mouseX, mouseY);
     simulationMaterial.uniforms.uMouseVelocity.value.set(
